@@ -1,0 +1,146 @@
+---
+title: "Video_games"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+### load games data and change data type for percentage column
+```{r}
+games <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-03-16/games.csv')
+games<-as.data.frame(games)
+games[,7]<-as.numeric(sub("%", "", games[,7]))
+dim(games)
+```
+In this dataset, there are 83631 games, each with 7 variables \n
+
+### Check if there's any missing data
+```{r}
+ix.na<- which(rowSums(is.na(games))>0)
+dim(games[ix.na,])
+```
+1364 games contain missing data.\n
+
+### Remove lines with missing data
+```{r}
+games.clean<-games[-ix.na,]
+dim(games.clean)
+```
+After remove games with missing data. 82267 games are retained. \n
+
+### Create summary statistics for serval variables
+```{r}
+summary(games.clean[,4:7])
+```
+Somes descriptive statistics are provided for above four numerical variables.\n
+
+### Create histogram to characterize the distribution of key variables
+```{r}
+#histogram for avg
+library(ggplot2)
+ggplot(games.clean, aes(x=avg)) + geom_histogram(bins=50)
+```
+For most games, average number of players are 0.
+
+
+```{r}
+#histogram for gain/loss
+ggplot(games.clean, aes(x=gain)) + geom_histogram(bins =50)
+```
+For most games, gains compared to previous month is 0. \n
+
+
+```{r}
+#histogram for peak
+ggplot(games.clean, aes(x=peak)) + geom_histogram(bins =50)
+```
+For most games, the peak number of players is 0. \n
+
+```{r}
+library(dplyr)
+grouped.year<-group_by(games.clean,year)
+avg_by_year<-summarise(grouped.year,
+          avg.by.year=mean(avg))
+p<-ggplot(data=avg_by_year, aes(x=as.character(year), y=avg.by.year)) +
+  geom_bar(stat="identity", fill="steelblue")+ggtitle("Mean average number of players by year")
+p
+```
+We calculated the mean average number of players by year, and found out that from 2012-2021, there's a clear increase in mean averge number of players among collected games for that specific year \n
+
+
+```{r}
+library(dplyr)
+grouped.year<-group_by(games.clean,year)
+peak_by_year<-summarise(grouped.year,
+          peak.by.year=mean(peak))
+ggplot(data=peak_by_year, aes(x=as.character(year), y=peak.by.year)) +
+  geom_bar(stat="identity", fill="steelblue")+ggtitle("Mean peak number of players by year")
+
+```
+Similarly, we also calculated mean peak number of players for games collected in each year. There's also a clear trend of increase in mean peak number of players.\n 
+
+Specifically, I'M interested in records related with my favourite game Dota. I used regular expression to extract all records related with Dota.\n
+```{r}
+library(stringr)
+dota<-games.clean[!is.na(str_extract(games.clean[,1],pattern = "Dota")),]
+print(paste0("Number of records related with Dota: ",nrow(dota)))
+dota.game.name<-paste(unique(dota[,1]),collapse = ",")
+print(paste0("Kinds of dota games: ",dota.game.name))
+```
+It turns out that there are 123 records are related with Dota. And actually two games belonging to Dota series,Dota2 and Dota Underlords ,are collected in this dataset. Specifically I'm more interested in records related with Dota2.\n
+
+```{r}
+dota2<-dota[dota[,1]=="Dota 2",]
+dim(dota2)
+```
+In total, 103 records about dota2 is collected in this dataset.\n We then sort this dota 2 data set according to its collection date.\n
+```{r}
+raw.date<-paste0(dota2[,3],"-","01","-",dota2[,2])
+dota2[,"date"]<-as.Date(raw.date,"%B-%d-%Y")
+dota2.sorted<-dota2[order(dota2$date),]
+head(dota2.sorted)
+```
+Based on date-sorted dataset for Dota2.The very beginning record for dota is collected in August of 2012.\n
+
+Next we plot the by-month average number of players for Dota 2\n
+```{r}
+ggplot(data=dota2.sorted, aes(x=date, y=avg)) +
+  geom_line()+ggtitle("Dota2's average number of player for each month")
+```
+From the plot above, we can clearly see that Dota2 start to get more and more popular from 2014. The average number of players reach the peak in around middle of 2016. After 2017, Dota gradually become less popular.\n
+
+```{r}
+ggplot(data=dota2.sorted, aes(x=date, y=peak)) +
+  geom_line()+ggtitle("Dota2's average number of player for each month")
+```
+Similar pattern is also reflected by the peak number of players for each month. Thus we can conclude that peak of popularity for dota2 is around middle of 2016 and it becomes less popular in recent years.\n
+
+Then we are more interested in to figure out the relation ship between the popularity and monthly gain. Thus we built a linear regression model by using peak number of players per month (avg) as predictor and net gain of each month as response.\n
+
+We first calculate net gain for each month by cumulative addition.\n
+```{r}
+dota2.sorted[,"monthly_net_gain"]<-cumsum(dota2.sorted$gain)
+```
+
+Then we check the relationship between monthly average number of player and monthly net gain\n
+```{r}
+ggplot(dota2.sorted, aes(x=peak, y=monthly_net_gain)) +
+  geom_point(size=2, shape=23)+geom_smooth()
+```
+Based on plot above we can see a strong correlation between peak number of players and monthly net gain. Next we build a linear regression model for the above two variale\n
+
+```{r}
+y=dota2.sorted$monthly_net_gain
+x=dota2.sorted$peak
+mod<-lm(y~x)
+summary(mod)
+```
+The linear regression model is consistent with our observation the R squared between peak number of players and net gain is 0.9628.\n
+
+
